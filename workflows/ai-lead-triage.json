@@ -1,0 +1,801 @@
+{
+  "name": "AI inbox triage & lead routing",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## AI inbox triage & lead routing\nEvery inbound message is read by an LLM, which classifies it, scores sales intent and extracts the useful fields as strict JSON. The workflow then routes it automatically:\n\n- **Hot leads**: CRM record, AI-drafted first reply, Slack alert to sales\n- **Other leads**: CRM record for nurturing\n- **Support & billing**: helpdesk ticket in the right queue, Slack escalation if urgent\n- **Spam**: dropped\n- **Anything unclear**: a human is asked on Slack\n\nThe sender's system gets an instant JSON response with the triage result.",
+        "height": 300,
+        "width": 700,
+        "color": 7
+      },
+      "id": "828ff03f-4b11-4481-8eaa-66c317c4ffa8",
+      "name": "Overview",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Setup (5 minutes)\n1. Open **Config** and set the LLM URL & model (any OpenAI-compatible API: OpenAI, Groq, Mistral, OpenRouter, Ollama), your Slack incoming-webhook URL, CRM and helpdesk endpoints, and the hot-lead threshold.\n2. Create a **Header Auth** credential named `LLM API key` with name `Authorization` and value `Bearer <your key>`.\n3. Activate the workflow and POST messages to `/webhook/inbound-message`.\n\nSwap the webhook for a Gmail, Outlook, Typeform or HubSpot trigger without changing anything downstream.",
+        "height": 300,
+        "width": 520,
+        "color": 5
+      },
+      "id": "22c0d01b-1f3f-48e1-8f2b-de55081cdac8",
+      "name": "Setup",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        680,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Sales",
+        "height": 520,
+        "width": 940,
+        "color": 4
+      },
+      "id": "f096b117-eb50-4990-a798-b47b09d21ca9",
+      "name": "Sales branch",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "content": "### Support & billing",
+        "height": 240,
+        "width": 720,
+        "color": 6
+      },
+      "id": "4bc23892-1a86-4d8c-8cb7-2beedabb9423",
+      "name": "Support branch",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1540,
+        530
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "inbound-message",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "97b423bf-b789-4e02-a70f-53ae925b93b4",
+      "name": "Incoming message",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        400
+      ],
+      "webhookId": "3f6b6c2e-9c8d-4c51-a0b7-6a1d0e7c2f11"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c25bd0ea-41c8-4f6a-9c35-cf86025a3dd6",
+              "name": "llm_base_url",
+              "value": "http://mock-services:8787/v1",
+              "type": "string"
+            },
+            {
+              "id": "1bc78cfa-0440-4f08-8d6f-cf0768b5d628",
+              "name": "llm_model",
+              "value": "mock-llm",
+              "type": "string"
+            },
+            {
+              "id": "129afc89-c1f9-4d6a-82d5-c83366d00c65",
+              "name": "slack_webhook_url",
+              "value": "http://mock-services:8787/hooks/slack",
+              "type": "string"
+            },
+            {
+              "id": "f702fe4f-6d27-490a-9f91-dc207e2aa238",
+              "name": "crm_webhook_url",
+              "value": "http://mock-services:8787/hooks/crm",
+              "type": "string"
+            },
+            {
+              "id": "8671dfe0-d87e-425b-84bb-9f0647417d94",
+              "name": "helpdesk_webhook_url",
+              "value": "http://mock-services:8787/hooks/helpdesk",
+              "type": "string"
+            },
+            {
+              "id": "d8f0ab98-c936-4baf-a7e1-ad7ae1be0d9c",
+              "name": "hot_lead_threshold",
+              "value": 70,
+              "type": "number"
+            },
+            {
+              "id": "04c370a5-c746-4a62-940e-e042eec7f980",
+              "name": "classifier_prompt",
+              "value": "You triage inbound messages for Northwind Logistics, a European freight and logistics company.\nRead the message and return ONLY a JSON object with exactly these keys:\n- category: one of sales_lead, support, billing, partnership, spam, other\n- urgency: low | medium | high\n- sentiment: positive | neutral | negative\n- language: ISO 639-1 code of the message\n- summary: one sentence in English, max 25 words\n- company: the sender's company, or null\n- contact_name: the sender's name, or null\n- budget_eur: number or null (convert other currencies approximately)\n- timeline: short text or null\n- product_interest: short text or null\n- lead_score: integer 0-100, how likely this becomes a paying customer. 0 unless category is sales_lead. Score higher for concrete volumes, budget, timeline and a business email domain.\n- needs_human: true if the request is ambiguous, legal, sensitive, or you are unsure\nNever invent facts that are not in the message.",
+              "type": "string"
+            },
+            {
+              "id": "cf9f7b4c-c90f-4458-ab57-3ce1bd619435",
+              "name": "reply_prompt",
+              "value": "You write first replies for the sales team of Northwind Logistics.\nWrite a short, warm and specific reply (max 120 words) in the sender's language.\nReference what they asked for, propose a 20-minute call this week, and never promise prices or delivery dates.\nSign as \"The Northwind sales team\". Return only the email body.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "e38457e0-b978-419b-b80e-2a621941ef6e",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        400
+      ],
+      "notes": "All business settings in one place",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalises the webhook payload and strips noise before it reaches the LLM.\n// Accepts {from_name, from_email, subject, body, channel} (aliases: name, email, message, text).\nconst MAX_CHARS = 6000;\nconst out = [];\nfor (const item of $input.all()) {\n  const p = item.json.body ?? item.json;\n  const email = String(p.from_email ?? p.email ?? '').trim().toLowerCase();\n  const raw = String(p.body ?? p.message ?? p.text ?? '');\n  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error(`Invalid or missing from_email: \"${email}\"`);\n  if (!raw.trim()) throw new Error('Message body is empty');\n\n  const body = raw\n    .split(/\\n-- ?\\n|\\nOn .+wrote:\\n|\\nLe .+a écrit :\\n|\\n-----Original Message-----/)[0] // drop quoted thread & signature\n    .split('\\n').filter((line) => !line.trim().startsWith('>')).join('\\n')\n    .replace(/\\n{3,}/g, '\\n\\n')\n    .trim()\n    .slice(0, MAX_CHARS);\n\n  out.push({\n    json: {\n      message_id: p.message_id ?? `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`,\n      received_at: new Date().toISOString(),\n      channel: p.channel ?? 'email',\n      from_name: String(p.from_name ?? p.name ?? '').trim() || email.split('@')[0],\n      from_email: email,\n      subject: String(p.subject ?? '(no subject)').trim().slice(0, 200),\n      body,\n    },\n  });\n}\nreturn out;"
+      },
+      "id": "f200a8f6-d20c-4bc5-a734-3c0976a7740a",
+      "name": "Clean & validate input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        400
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'rejected', error: $json.error ?? 'Invalid payload' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "131b2b2f-5bdf-4368-bcc7-0e20f4fbe0b5",
+      "name": "Reject invalid input",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.llm_base_url }}/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: $('Config').first().json.llm_model,\n  temperature: 0,\n  response_format: { type: 'json_object' },\n  messages: [\n    { role: 'system', content: $('Config').first().json.classifier_prompt },\n    { role: 'user', content: `From: ${$json.from_name} <${$json.from_email}>\\nSubject: ${$json.subject}\\nChannel: ${$json.channel}\\n\\nMessage:\\n${$json.body}` }\n  ]\n}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "dca449be-95aa-4230-bdb8-b140fb65358f",
+      "name": "AI: classify & extract",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        400
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "llmHeaderAuth01",
+          "name": "LLM API key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000,
+      "notes": "Strict JSON output",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validates the model's JSON so a malformed answer can never break routing.\nconst cfg = $('Config').first().json;\nconst messages = $('Clean & validate input').all();\nconst ENUM = {\n  category: ['sales_lead', 'support', 'billing', 'partnership', 'spam', 'other'],\n  urgency: ['low', 'medium', 'high'],\n  sentiment: ['positive', 'neutral', 'negative'],\n};\nconst pick = (value, allowed, fallback) => {\n  const v = String(value ?? '').toLowerCase().trim();\n  return allowed.includes(v) ? v : fallback;\n};\nconst text = (v, max = 200) => (v === null || v === undefined || v === '' ? null : String(v).slice(0, max));\n\nreturn $input.all().map((item, i) => {\n  const msg = messages[i].json;\n  let ai = {};\n  let ai_error = null;\n  try {\n    const raw = item.json.choices?.[0]?.message?.content ?? '';\n    ai = JSON.parse(raw.replace(/^```(?:json)?\\s*/i, '').replace(/\\s*```$/, ''));\n  } catch (e) {\n    ai_error = `Could not parse model output: ${e.message}`;\n  }\n\n  const category = pick(ai.category, ENUM.category, 'other');\n  const urgency = pick(ai.urgency, ENUM.urgency, 'medium');\n  const lead_score = category === 'sales_lead'\n    ? Math.max(0, Math.min(100, Math.round(Number(ai.lead_score) || 0)))\n    : 0;\n  const budget = Number(ai.budget_eur);\n\n  let route = 'human_review';\n  if (category === 'spam') route = 'ignored';\n  else if (category === 'sales_lead') route = lead_score >= cfg.hot_lead_threshold ? 'hot_lead' : 'nurture';\n  else if (category === 'support' || category === 'billing') route = urgency === 'high' ? 'urgent_ticket' : 'ticket';\n\n  return {\n    json: {\n      ...msg,\n      category,\n      urgency,\n      sentiment: pick(ai.sentiment, ENUM.sentiment, 'neutral'),\n      language: text(ai.language, 5) ?? 'en',\n      summary: text(ai.summary, 300) ?? msg.subject,\n      company: text(ai.company, 120),\n      contact_name: text(ai.contact_name, 120) ?? msg.from_name,\n      budget_eur: Number.isFinite(budget) && budget > 0 ? budget : null,\n      timeline: text(ai.timeline, 120),\n      product_interest: text(ai.product_interest, 120),\n      lead_score,\n      needs_human: Boolean(ai.needs_human) || ai_error !== null || route === 'human_review',\n      route,\n      ai_error,\n      model: item.json.model ?? cfg.llm_model,\n    },\n    pairedItem: { item: i },\n  };\n});"
+      },
+      "id": "3e79c9ae-3a61-4d2a-ad95-43765b37d9ac",
+      "name": "Parse AI output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        400
+      ],
+      "notes": "Validates & decides the route",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'accepted', message_id: $json.message_id, triage: { category: $json.category, urgency: $json.urgency, lead_score: $json.lead_score, route: $json.route, summary: $json.summary, needs_human: $json.needs_human } } }}",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "fb59d6c6-4619-44bc-b323-65dea8a2374b",
+      "name": "Acknowledge sender",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1100,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "2f80193a-5857-4db8-9bb6-416b554deb8d",
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "sales_lead",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Sales lead"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "bf42aeb5-ae3e-496d-a8d1-4595924a2239",
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "support",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  },
+                  {
+                    "id": "870ec682-c6bf-4b86-ae55-4eff311341c0",
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "billing",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "or"
+              },
+              "renameOutput": true,
+              "outputKey": "Support or billing"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "7af089e1-eb88-457c-afb3-b2f3c0a15079",
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "spam",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Spam"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Needs a human"
+        }
+      },
+      "id": "71e6b39f-edfc-49a7-b028-135bd9a1f317",
+      "name": "Route by category",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1320,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.crm_webhook_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  email: $json.from_email,\n  name: $json.contact_name,\n  company: $json.company,\n  lifecycle_stage: $json.lead_score >= $('Config').first().json.hot_lead_threshold ? 'sales_qualified_lead' : 'lead',\n  lead_score: $json.lead_score,\n  summary: $json.summary,\n  budget_eur: $json.budget_eur,\n  timeline: $json.timeline,\n  product_interest: $json.product_interest,\n  source: $json.channel,\n  last_message_subject: $json.subject,\n  message_id: $json.message_id\n}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "161c5d2b-40e3-445f-b49f-5aba01d2adce",
+      "name": "Upsert lead in CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1600,
+        60
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e88fede4-6268-41c4-8545-e965a0d8c737",
+              "leftValue": "={{ $json.lead_score }}",
+              "rightValue": "={{ $('Config').first().json.hot_lead_threshold }}",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ad6d00ef-e30f-47a6-8cf1-deb9f90cd8f0",
+      "name": "Hot lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1600,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.llm_base_url }}/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: $('Config').first().json.llm_model,\n  temperature: 0.4,\n  messages: [\n    { role: 'system', content: $('Config').first().json.reply_prompt },\n    { role: 'user', content: `From: ${$json.contact_name} <${$json.from_email}>\\nCompany: ${$json.company ?? 'unknown'}\\nSummary: ${$json.summary}\\n\\nOriginal message:\\n${$json.body}` }\n  ]\n}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "e39c9863-da0f-4937-a3c8-1599b0fed14c",
+      "name": "AI: draft first reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1820,
+        200
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "llmHeaderAuth01",
+          "name": "LLM API key"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Builds a Slack Block Kit message for the sales team (runs once per lead).\nconst lead = $('Hot lead?').item.json;\nconst draft = $json.choices?.[0]?.message?.content?.trim() || '(no draft generated)';\nconst money = lead.budget_eur ? `€${Number(lead.budget_eur).toLocaleString('en-US')}` : 'not stated';\nreturn {\n  json: {\n    channel: 'sales-hot-leads',\n    text: `Hot lead (${lead.lead_score}/100): ${lead.contact_name}${lead.company ? ' at ' + lead.company : ''}`,\n    blocks: [\n      { type: 'section', text: { type: 'mrkdwn', text: `*${lead.subject}*\\n${lead.summary}` } },\n      {\n        type: 'section',\n        fields: [\n          { type: 'mrkdwn', text: `*Budget*\\n${money}` },\n          { type: 'mrkdwn', text: `*Timeline*\\n${lead.timeline ?? 'not stated'}` },\n          { type: 'mrkdwn', text: `*Interested in*\\n${lead.product_interest ?? 'not stated'}` },\n          { type: 'mrkdwn', text: `*Contact*\\n${lead.from_email}` },\n        ],\n      },\n      { type: 'section', text: { type: 'mrkdwn', text: `*Suggested first reply*\\n${draft}` } },\n      { type: 'context', elements: [{ type: 'mrkdwn', text: `Message ${lead.message_id} | scored by ${lead.model}` }] },\n    ],\n  },\n};"
+      },
+      "id": "b07b21a8-1b39-46db-99f5-8c3dc37934fb",
+      "name": "Build Slack alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2040,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.slack_webhook_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "65d20286-4e80-40dd-a7ff-ec4df92391b6",
+      "name": "Alert sales on Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2260,
+        200
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {},
+      "id": "b478bd2a-acb7-4367-8b18-b0b44eb47842",
+      "name": "Keep nurturing",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2040,
+        360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.helpdesk_webhook_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  subject: $json.subject,\n  description: $json.summary + '\\n\\n---\\n' + $json.body,\n  requester_email: $json.from_email,\n  requester_name: $json.contact_name,\n  queue: $json.category === 'billing' ? 'finance' : 'support',\n  priority: { high: 'urgent', medium: 'normal', low: 'low' }[$json.urgency],\n  tags: [$json.category, $json.sentiment, $json.language],\n  source_message_id: $json.message_id\n}) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "946725b6-0572-4fc8-ae03-840dd06a33fb",
+      "name": "Create helpdesk ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1600,
+        640
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f9a12f1a-3949-41d8-846a-f0042bc7f6de",
+              "leftValue": "={{ $('Parse AI output').item.json.urgency }}",
+              "rightValue": "high",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2fd2b309-e275-4043-ba3f-e84390e55d48",
+      "name": "Urgent?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1820,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.slack_webhook_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => { const m = $('Parse AI output').item.json; return JSON.stringify({\n  channel: 'support-escalations',\n  text: `Urgent ${m.category} ticket ${$json.ticket_id ?? ''} from ${m.contact_name} <${m.from_email}>`,\n  blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `*${m.subject}*\\n${m.summary}\\nSentiment: ${m.sentiment}` } }]\n}); })() }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "ddd2fe01-67eb-47ef-8401-160708ffd199",
+      "name": "Escalate on Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2040,
+        620
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {},
+      "id": "f5c4a27c-97e3-4711-bcd5-c93af4f94d69",
+      "name": "Drop spam",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        840
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.slack_webhook_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  channel: 'inbox-review',\n  text: `Needs review (${$json.category}): ${$json.contact_name} <${$json.from_email}>`,\n  blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `*${$json.subject}*\\n${$json.summary}${$json.ai_error ? '\\nAI error: ' + $json.ai_error : ''}` } }]\n}) }}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "cf56b2c5-8d70-44e8-8a88-d77f128ce798",
+      "name": "Ask a human on Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1600,
+        1000
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    }
+  ],
+  "connections": {
+    "Incoming message": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Clean & validate input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean & validate input": {
+      "main": [
+        [
+          {
+            "node": "AI: classify & extract",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject invalid input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: classify & extract": {
+      "main": [
+        [
+          {
+            "node": "Parse AI output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI output": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge sender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acknowledge sender": {
+      "main": [
+        [
+          {
+            "node": "Route by category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by category": {
+      "main": [
+        [
+          {
+            "node": "Upsert lead in CRM",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Hot lead?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create helpdesk ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Drop spam",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ask a human on Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hot lead?": {
+      "main": [
+        [
+          {
+            "node": "AI: draft first reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keep nurturing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI: draft first reply": {
+      "main": [
+        [
+          {
+            "node": "Build Slack alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Slack alert": {
+      "main": [
+        [
+          {
+            "node": "Alert sales on Slack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create helpdesk ticket": {
+      "main": [
+        [
+          {
+            "node": "Urgent?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Urgent?": {
+      "main": [
+        [
+          {
+            "node": "Escalate on Slack",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": true
+  },
+  "pinData": {},
+  "active": false,
+  "id": "aiLeadTriage001",
+  "tags": [],
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

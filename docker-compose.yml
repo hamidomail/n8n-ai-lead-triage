@@ -1,0 +1,45 @@
+# One command demo:  docker compose up -d   then   python scripts/send_samples.py
+#   n8n editor       http://localhost:5678
+#   workflow outputs http://localhost:8787
+services:
+  mock-services:
+    build: ./mock_services
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
+
+  # Imports the workflow + a placeholder credential, then publishes it. Runs once.
+  n8n-setup:
+    image: docker.n8n.io/n8nio/n8n:2.46.6
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        n8n import:credentials --input=/workflows/demo-credentials.json &&
+        n8n import:workflow --input=/workflows/ai-lead-triage.json &&
+        n8n publish:workflow --id=aiLeadTriage001
+    environment: &n8n-env
+      GENERIC_TIMEZONE: Europe/Paris
+      TZ: Europe/Paris
+      N8N_SECURE_COOKIE: "false"          # allow login over plain http on localhost
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_RUNNERS_ENABLED: "true"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/workflows:ro
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.46.6
+    ports:
+      - "5678:5678"
+    environment: *n8n-env
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      n8n-setup:
+        condition: service_completed_successfully
+      mock-services:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  n8n_data:

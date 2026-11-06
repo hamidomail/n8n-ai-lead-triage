@@ -1,0 +1,44 @@
+[
+  {
+    "from_name": "Sofia Marchetti",
+    "from_email": "s.marchetti@verdefoods.it",
+    "subject": "Quote request: refrigerated transport Milan to Lyon",
+    "channel": "website_form",
+    "body": "Hello, we are looking for a carrier for cold chain transport from Milan to Lyon. We ship around 40 pallets per week of fresh produce and our budget is about €18,000 per month. We would like to start by next month, so a quote this week would be great.\n\nBest regards,\nSofia Marchetti\nLogistics Manager, Verde Foods"
+  },
+  {
+    "from_name": "Tom Becker",
+    "from_email": "tom.becker@gmail.com",
+    "subject": "Pricing?",
+    "channel": "email",
+    "body": "Hi, what's your pricing for sending a few boxes to Spain? Just curious for now.\n\nThanks"
+  },
+  {
+    "from_name": "Amina Haddad",
+    "from_email": "a.haddad@kaltronics.de",
+    "subject": "URGENT: tracking portal down, customers calling",
+    "channel": "email",
+    "body": "Your tracking portal has been down since this morning and our customers cannot see where their deliveries are. This is the second outage this month, which is unacceptable. We need this fixed today.\n\n> On Monday, support wrote:\n> We have resolved the previous incident.\n\n-- \nAmina Haddad | Kaltronics GmbH"
+  },
+  {
+    "from_name": "Pierre Lambert",
+    "from_email": "compta@boulangeries-lambert.fr",
+    "subject": "Invoice INV-2026-0912 charged twice",
+    "channel": "email",
+    "body": "Hello, it looks like invoice INV-2026-0912 was charged twice on our card. Could you issue a refund for the duplicate payment? Thank you."
+  },
+  {
+    "from_name": "Growth Team",
+    "from_email": "deals@rank-boost-pro.biz",
+    "subject": "Guaranteed ranking on Google!!!",
+    "channel": "email",
+    "body": "We offer SEO services with guaranteed ranking and 500 backlinks for only $99. Click here to claim your offer. You have won a free audit!"
+  },
+  {
+    "from_name": "Lena Vos",
+    "from_email": "lena@fleetwise.nl",
+    "subject": "Partnership idea",
+    "channel": "linkedin",
+    "body": "Hi team, I run Fleetwise, a route-optimisation startup. I think a partnership could make sense for both of us, we could explore a white-label integration. Open to a chat?"
+  }
+]
